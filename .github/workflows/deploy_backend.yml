@@ -3,6 +3,9 @@ name: Deploy Backend to Azure Web App
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy_backend.yml'
 
 jobs:
   build-and-deploy:
@@ -16,10 +19,12 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install backend dependencies
+      - name: Install backend deps
+        working-directory: backend
         run: |
-          cd backend
-          npm install
+          npm ci || npm install
+
+      # Optional: run tests or lint here
 
       - name: Zip backend
         run: |
