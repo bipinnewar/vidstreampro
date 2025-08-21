@@ -81,6 +81,9 @@ function App() {
                 <>
                   <li className="nav-item">
                     <span className="navbar-text me-2">Hello, {user.username}</span>
+                    <span className="navbar-text me-2 badge bg-secondary">
+                      {user.role === 'CREATOR' ? 'Creator' : 'Consumer'}
+                    </span>
                   </li>
                   <li className="nav-item">
                     <button className="btn btn-outline-light" onClick={handleLogout}>

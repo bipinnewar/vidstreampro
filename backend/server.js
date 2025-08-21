@@ -17,15 +17,32 @@ const {
 } = require('@azure/ai-text-analytics');
 require('dotenv').config();
 
+/* ---------- Read SAS helper for playback ---------- */
+function getReadSasUrl(blobName, minutes = 120) {
+  const cred = new StorageSharedKeyCredential(
+    process.env.STORAGE_ACCOUNT_NAME,
+    process.env.STORAGE_ACCOUNT_KEY
+  );
+  const startsOn = new Date(Date.now() - 5 * 60 * 1000); // 5 min clock skew
+  const expiresOn = new Date(Date.now() + minutes * 60 * 1000);
+
+  const sas = generateBlobSASQueryParameters(
+    {
+      containerName: process.env.STORAGE_CONTAINER_NAME,
+      blobName,
+      permissions: BlobSASPermissions.parse('r'), // READ
+      startsOn,
+      expiresOn,
+      protocol: 'https',
+    },
+    cred
+  ).toString();
+
+  return `https://${process.env.STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${process.env.STORAGE_CONTAINER_NAME}/${blobName}?${sas}`;
+}
+
 /*
- * This server implements a complete RESTful API for a scalable video sharing
- * application. Users can sign up and log in, upload videos, browse videos,
- * comment and rate, and creators can manage their own content. The server
- * uses Azure Cosmos DB to store metadata, Azure Blob Storage for video
- * files, and Azure Cognitive Services to run sentiment analysis on
- * comments. Authentication is handled via JSON Web Tokens and
- * bcrypt-hashed passwords. All secrets and connection strings are
- * provided through environment variables. See .env.example for the full list.
+ * REST API for scalable video sharing app (Cosmos DB + Blob Storage + Text Analytics).
  */
 
 const app = express();
@@ -84,7 +101,8 @@ const textAnalyticsClient = new TextAnalyticsClient(
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing Authorization header' });
+    // Friendlier message as requested
+    return res.status(401).json({ error: 'Login required!' });
   }
   const token = authHeader.split(' ')[1];
   try {
@@ -92,7 +110,7 @@ const authenticate = async (req, res, next) => {
     req.user = payload;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Login required!' });
   }
 };
 
@@ -110,7 +128,8 @@ const generateUploadSas = (blobName, contentType) => {
   const sasOptions = {
     containerName: STORAGE_CONTAINER_NAME,
     blobName,
-    permissions: BlobSASPermissions.parse('cw'),
+    // include READ so immediate verification/read is allowed
+    permissions: BlobSASPermissions.parse('rcw'),
     startsOn: new Date(new Date().valueOf() - 5 * 60 * 1000),
     expiresOn,
     contentType,
@@ -125,7 +144,6 @@ const generateUploadSas = (blobName, contentType) => {
 async function analyzeSentiment(text) {
   try {
     const [result] = await textAnalyticsClient.analyzeSentiment([text]);
-    // return positive score minus negative to get sentiment value (-1 to 1)
     const { positive, neutral, negative } = result.confidenceScores;
     return positive - negative;
   } catch (err) {
@@ -141,7 +159,6 @@ app.post('/api/auth/signup', async (req, res) => {
     return res.status(400).json({ error: 'Missing fields' });
   }
   const normalizedEmail = email.toLowerCase();
-  // Check existing user
   const query = `SELECT * FROM c WHERE c.email = @email`;
   const { resources: existing } = await usersContainer.items
     .query({ query, parameters: [{ name: '@email', value: normalizedEmail }] })
@@ -199,7 +216,9 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   res.json({ user: { userId: user.id, username: user.username, email: user.email, role: user.role } });
 });
 
-// Get all videos with optional search and pagination
+/* ---------- VIDEOS ---------- */
+
+// Get all videos with optional search and genre filter (include streamUrl)
 app.get('/api/videos', async (req, res) => {
   const { search, genre } = req.query;
   let query = 'SELECT * FROM c';
@@ -215,27 +234,48 @@ app.get('/api/videos', async (req, res) => {
   }
   if (where.length) query += ' WHERE ' + where.join(' AND ');
   query += ' ORDER BY c.createdAt DESC';
+
   const { resources: videos } = await videosContainer.items
     .query({ query, parameters })
     .fetchAll();
-  res.json(videos);
+
+  // Normalize each item and attach a temporary read SAS for playback
+  const items = (videos || []).map((v) => {
+    // v.videoUrl is stored as either blobName (e.g. "<id>.mp4") or a full URL
+    const blob =
+      v.blobName ||
+      (v.videoUrl ? v.videoUrl.split('/').pop().split('?')[0] : null);
+
+    const streamUrl = blob ? getReadSasUrl(blob, 120) : null;
+    return { ...v, streamUrl };
+  });
+
+  res.json(items);
 });
 
-// Get a single video with comments and ratings
+// Get a single video with comments (include streamUrl)
 app.get('/api/videos/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const { resource: video } = await videosContainer.item(id, id).read();
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    // get latest 20 comments
+
     const { resources: comments } = await commentsContainer.items
       .query({
         query: 'SELECT * FROM c WHERE c.videoId = @id ORDER BY c.timestamp DESC',
         parameters: [{ name: '@id', value: id }],
       })
       .fetchAll();
-    res.json({ video, comments });
+
+    const blob =
+      video.blobName ||
+      (video.videoUrl ? video.videoUrl.split('/').pop().split('?')[0] : null);
+
+    const streamUrl = blob ? getReadSasUrl(blob, 120) : null;
+
+    res.json({ video: { ...video, streamUrl }, comments });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Error loading video' });
   }
 });
@@ -246,6 +286,7 @@ app.post('/api/videos', authenticate, requireCreator, async (req, res) => {
   const id = uuidv4();
   const blobName = `${id}.mp4`;
   const sasUrl = generateUploadSas(blobName, contentType || 'video/mp4');
+
   const videoDoc = {
     id,
     title: title || 'Untitled',
@@ -255,6 +296,7 @@ app.post('/api/videos', authenticate, requireCreator, async (req, res) => {
     genre: genre || '',
     ageRating: ageRating || '',
     uploadedBy: req.user.userId,
+    // store blobName; we’ll compose URLs as needed
     videoUrl: `${blobName}`,
     thumbnailUrl: '',
     status: 'uploading',
@@ -273,10 +315,9 @@ app.post('/api/videos/:id/finalize', authenticate, requireCreator, async (req, r
   const { resource: video } = await videosContainer.item(id, id).read();
   if (!video) return res.status(404).json({ error: 'Video not found' });
   if (video.uploadedBy !== req.user.userId) return res.status(403).json({ error: 'Not your video' });
+
+  // mark ready; keep `videoUrl` as blobName (safer), playback uses SAS anyway
   video.status = 'ready';
-  video.videoUrl = `https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_CONTAINER_NAME}/${encodeURIComponent(
-    video.videoUrl
-  )}`;
   await videosContainer.items.upsert(video);
   res.json({ ok: true });
 });
@@ -300,7 +341,7 @@ app.delete('/api/videos/:id', authenticate, requireCreator, async (req, res) => 
   if (!video) return res.status(404).json({ error: 'Video not found' });
   if (video.uploadedBy !== req.user.userId) return res.status(403).json({ error: 'Not your video' });
   await videosContainer.item(id, id).delete();
-  // We won't delete blob in this sample to keep it simple
+  // Not deleting blob in this sample
   res.json({ ok: true });
 });
 
@@ -331,11 +372,13 @@ app.post('/api/videos/:id/rate', authenticate, async (req, res) => {
   const rating = Math.min(5, Math.max(1, Number(score)));
   const { resource: video } = await videosContainer.item(id, id).read();
   if (!video) return res.status(404).json({ error: 'Video not found' });
+
   // Only allow one rating per user; update if exists
   const ratingQuery = `SELECT * FROM c WHERE c.videoId = @id AND c.userId = @uid`;
   const { resources: existing } = await ratingsContainer.items
     .query({ query: ratingQuery, parameters: [{ name: '@id', value: id }, { name: '@uid', value: req.user.userId }] })
     .fetchAll();
+
   if (existing.length > 0) {
     const existingRating = existing[0];
     video.ratingTotal = video.ratingTotal - existingRating.score + rating;

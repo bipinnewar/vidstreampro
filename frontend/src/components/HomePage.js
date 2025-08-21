@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { apiClient } from '../api';
-import { Container, Row, Col, Card, Form, Button } from 'react-bootstrap';
-import { toast } from 'react-toastify';
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { apiClient } from "../api";
+import { Container, Row, Col, Card, Form, Button } from "react-bootstrap";
+import { toast } from "react-toastify";
+import { GENRE_OPTIONS } from "../constants";
 
 /*
  * HomePage displays a searchable list of videos. Users can filter by
@@ -11,8 +12,8 @@ import { toast } from 'react-toastify';
  */
 const HomePage = () => {
   const [videos, setVideos] = useState([]);
-  const [search, setSearch] = useState('');
-  const [genre, setGenre] = useState('');
+  const [search, setSearch] = useState("");
+  const [genre, setGenre] = useState("");
 
   useEffect(() => {
     loadVideos();
@@ -28,13 +29,13 @@ const HomePage = () => {
 
   const loadVideos = async (query = {}, showToast = false) => {
     try {
-      const res = await apiClient.get('/api/videos', { params: query });
+      const res = await apiClient.get("/api/videos", { params: query });
       const list = normalizeList(res.data);
       setVideos(list);
       if (showToast) toast.success(`${list.length} videos found`);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to load videos');
+      toast.error("Failed to load videos");
       setVideos([]); // ensure array to avoid map crash
     }
   };
@@ -57,39 +58,54 @@ const HomePage = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Form.Control
-          type="text"
-          placeholder="Filter by genre..."
+        <Form.Select
           className="me-2"
           value={genre}
           onChange={(e) => setGenre(e.target.value)}
-        />
+        >
+          <option value="">All genres</option>
+          {GENRE_OPTIONS.map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </Form.Select>
+
         <Button onClick={handleSearch}>Search</Button>
       </div>
 
       <Row>
-        {Array.isArray(videos) && videos.map((video) => {
-          const id = video.id || video.videoId || video._id;
-          return (
-            <Col key={id} md={4} className="mb-4">
-              <Card>
-                <Card.Body>
-                  <Card.Title>{video.title || 'Untitled'}</Card.Title>
-                  <Card.Subtitle className="mb-2 text-muted">
-                    {[video.genre, video.ageRating].filter(Boolean).join(' | ')}
-                  </Card.Subtitle>
-                  <Card.Text>{(video.description || '').substring(0, 80)}...</Card.Text>
-                  <Card.Text>
-                    Rating: {typeof video.ratingAvg === 'number' ? video.ratingAvg.toFixed(1) : 'N/A'} ({video.ratingCount || 0})
-                  </Card.Text>
-                  <Link className="btn btn-primary" to={`/videos/${id}`}>
-                    Watch
-                  </Link>
-                </Card.Body>
-              </Card>
-            </Col>
-          );
-        })}
+        {Array.isArray(videos) &&
+          videos.map((video) => {
+            const id = video.id || video.videoId || video._id;
+            return (
+              <Col key={id} md={4} className="mb-4">
+                <Card>
+                  <Card.Body>
+                    <Card.Title>{video.title || "Untitled"}</Card.Title>
+                    <Card.Subtitle className="mb-2 text-muted">
+                      {[video.genre, video.ageRating]
+                        .filter(Boolean)
+                        .join(" | ")}
+                    </Card.Subtitle>
+                    <Card.Text>
+                      {(video.description || "").substring(0, 80)}...
+                    </Card.Text>
+                    <Card.Text>
+                      Rating:{" "}
+                      {typeof video.ratingAvg === "number"
+                        ? video.ratingAvg.toFixed(1)
+                        : "N/A"}{" "}
+                      ({video.ratingCount || 0})
+                    </Card.Text>
+                    <Link className="btn btn-primary" to={`/videos/${id}`}>
+                      Watch
+                    </Link>
+                  </Card.Body>
+                </Card>
+              </Col>
+            );
+          })}
       </Row>
     </Container>
   );
