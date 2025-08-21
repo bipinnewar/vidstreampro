@@ -18,6 +18,7 @@ jobs:
 
       - name: Build (React)
         working-directory: frontend
+        REACT_APP_API_BASE: https://vidproapi12341.azurewebsites.net
         run: |
           npm install --no-audit --no-fund
           CI=false npm run build
