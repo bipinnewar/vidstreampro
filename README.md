@@ -152,7 +152,7 @@ az staticwebapp create \
   -g $RG \
   --location "West Europe" \
   --sku Free \
-  --source "https://github.com/<your-github-username>/vidstreampro" \
+  --source "https://github.com/bipinnewar/vidstreampro" \
   --branch main \
   --app-location "frontend" \
   --output-location "build"
