@@ -18,13 +18,24 @@ const HomePage = () => {
     loadVideos();
   }, []);
 
+  const normalizeList = (data) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.items)) return data.items;
+    if (Array.isArray(data?.videos)) return data.videos;
+    if (Array.isArray(data?.data)) return data.data;
+    return [];
+  };
+
   const loadVideos = async (query = {}, showToast = false) => {
     try {
       const res = await apiClient.get('/api/videos', { params: query });
-      setVideos(res.data);
-      if (showToast) toast.success(`${res.data.length} videos found`);
+      const list = normalizeList(res.data);
+      setVideos(list);
+      if (showToast) toast.success(`${list.length} videos found`);
     } catch (err) {
+      console.error(err);
       toast.error('Failed to load videos');
+      setVideos([]); // ensure array to avoid map crash
     }
   };
 
@@ -55,26 +66,30 @@ const HomePage = () => {
         />
         <Button onClick={handleSearch}>Search</Button>
       </div>
+
       <Row>
-        {videos.map((video) => (
-          <Col key={video.id} md={4} className="mb-4">
-            <Card>
-              <Card.Body>
-                <Card.Title>{video.title}</Card.Title>
-                <Card.Subtitle className="mb-2 text-muted">
-                  {video.genre} {video.ageRating ? `| ${video.ageRating}` : ''}
-                </Card.Subtitle>
-                <Card.Text>{video.description?.substring(0, 80)}...</Card.Text>
-                <Card.Text>
-                  Rating: {video.ratingAvg?.toFixed(1) || 'N/A'} ({video.ratingCount || 0})
-                </Card.Text>
-                <Link className="btn btn-primary" to={`/videos/${video.id}`}>
-                  Watch
-                </Link>
-              </Card.Body>
-            </Card>
-          </Col>
-        ))}
+        {Array.isArray(videos) && videos.map((video) => {
+          const id = video.id || video.videoId || video._id;
+          return (
+            <Col key={id} md={4} className="mb-4">
+              <Card>
+                <Card.Body>
+                  <Card.Title>{video.title || 'Untitled'}</Card.Title>
+                  <Card.Subtitle className="mb-2 text-muted">
+                    {[video.genre, video.ageRating].filter(Boolean).join(' | ')}
+                  </Card.Subtitle>
+                  <Card.Text>{(video.description || '').substring(0, 80)}...</Card.Text>
+                  <Card.Text>
+                    Rating: {typeof video.ratingAvg === 'number' ? video.ratingAvg.toFixed(1) : 'N/A'} ({video.ratingCount || 0})
+                  </Card.Text>
+                  <Link className="btn btn-primary" to={`/videos/${id}`}>
+                    Watch
+                  </Link>
+                </Card.Body>
+              </Card>
+            </Col>
+          );
+        })}
       </Row>
     </Container>
   );
