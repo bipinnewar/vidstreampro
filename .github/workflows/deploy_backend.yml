@@ -22,7 +22,8 @@ jobs:
       - name: Install backend deps
         working-directory: backend
         run: |
-          npm ci || npm install
+          npm install --no-audit --no-fund --omit=dev
+
 
       # Optional: run tests or lint here
 
