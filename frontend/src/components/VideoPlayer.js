@@ -80,9 +80,10 @@ const VideoPlayer = () => {
       <p className="text-muted">
         {video.genre} {video.ageRating ? `| ${video.ageRating}` : ''}
       </p>
-      <Row>
-        <Col md={8} className="mb-4">
-          <Card className="h-100">
+      {/* Center the video player and comments */}
+      <Row className="justify-content-center">
+        <Col xs={12} md={10} lg={8} className="mb-4">
+          <Card className="upload-card h-100">
             <Card.Body className="p-3">
               {/* Video player */}
               <video
@@ -140,9 +141,6 @@ const VideoPlayer = () => {
               </ListGroup>
             </Card.Body>
           </Card>
-        </Col>
-        <Col md={4}>
-          {/* Additional info or related videos could go here */}
         </Col>
       </Row>
     </Container>
