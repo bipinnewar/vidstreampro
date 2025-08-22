@@ -1,81 +1,42 @@
-import React, { useState } from 'react';
-import { apiClient } from '../api';
-import { useNavigate } from 'react-router-dom';
-import { Container, Form, Button } from 'react-bootstrap';
-import { toast } from 'react-toastify';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { apiClient } from "../api";
+import { toast } from "react-toastify";
 
-/*
- * SignupPage registers a new user. Users can choose a role (creator or
- * consumer). On success, a JWT token is stored and the parent is
- * notified via onSignup callback.
- */
 const SignupPage = ({ onSignup }) => {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('CONSUMER');
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const nav = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     try {
-      const res = await apiClient.post('/api/auth/signup', { username, email, password, role });
-      localStorage.setItem('token', res.data.token);
+      const res = await apiClient.post("/api/auth/signup", { name, email, password });
       onSignup(res.data.user);
-      toast.success('Account created');
-      navigate('/');
+      toast.success("Account created!");
+      nav("/");
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Signup failed');
-    } finally {
-      setLoading(false);
+      toast.error(err.response?.data?.message || "Signup failed");
     }
   };
 
   return (
-    <Container className="mt-3" style={{ maxWidth: '500px' }}>
-      <h2>Sign Up</h2>
-      <Form onSubmit={handleSubmit}>
-        <Form.Group className="mb-3">
-          <Form.Label>Username</Form.Label>
-          <Form.Control
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-        </Form.Group>
-        <Form.Group className="mb-3">
-          <Form.Label>Email</Form.Label>
-          <Form.Control
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </Form.Group>
-        <Form.Group className="mb-3">
-          <Form.Label>Password</Form.Label>
-          <Form.Control
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </Form.Group>
-        <Form.Group className="mb-3">
-          <Form.Label>Role</Form.Label>
-          <Form.Select value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="CONSUMER">Consumer</option>
-            <option value="CREATOR">Creator</option>
-          </Form.Select>
-        </Form.Group>
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Signing up...' : 'Sign Up'}
-        </Button>
-      </Form>
-    </Container>
+    <div className="mx-auto grid min-h-[70vh] max-w-md place-items-center px-4">
+      <form onSubmit={submit} className="card w-full p-6">
+        <h1 className="text-xl font-semibold">Create account</h1>
+        <label className="mt-5 block text-sm">Name</label>
+        <input className="input" value={name} onChange={e=>setName(e.target.value)} required />
+        <label className="mt-4 block text-sm">Email</label>
+        <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
+        <label className="mt-4 block text-sm">Password</label>
+        <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} required />
+        <button className="btn-primary mt-6 w-full">Sign up</button>
+        <p className="mt-4 text-center text-sm text-slate-300">
+          Already have an account? <Link to="/login" className="text-brand-500 hover:underline">Sign in</Link>
+        </p>
+      </form>
+    </div>
   );
 };
 

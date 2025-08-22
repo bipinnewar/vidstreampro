@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* App-wide custom styles */
+:root {
+  --bg: #0b1020;
+}
+body {
+  @apply bg-slate-950 text-slate-100;
+}
+.btn-primary {
+  @apply inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 font-medium text-white shadow hover:bg-brand-500;
+}
+.card {
+  @apply rounded-2xl bg-slate-900/70 ring-1 ring-white/10 shadow-lg;
+}
+.input {
+  @apply mt-1 block w-full rounded-xl border-slate-700 bg-slate-900/70 text-slate-100 placeholder-slate-400 focus:border-brand-500 focus:ring-brand-500;
+}
+.badge {
+  @apply inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300 ring-1 ring-white/10;
+}

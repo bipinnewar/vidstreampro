@@ -1,142 +1,71 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../api";
-import { Container, Form, Button, ListGroup, Row, Col } from "react-bootstrap";
 import { toast } from "react-toastify";
 
-/*
- * VideoPlayer fetches a single video and its comments. It displays
- * metadata, plays the video via HTML5 <video>, and allows signed-in
- * users to post comments and rate the video. Comments include a
- * sentiment score computed by the backend.
- */
 const VideoPlayer = () => {
   const { id } = useParams();
   const [video, setVideo] = useState(null);
   const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState("");
-  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
 
-  useEffect(() => {
-    loadVideo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  useEffect(() => { loadVideo(); }, [id]);
 
   const loadVideo = async () => {
     try {
       const res = await apiClient.get(`/api/videos/${id}`);
       setVideo(res.data.video);
       setComments(res.data.comments || []);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load video");
     }
   };
 
   const submitComment = async (e) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
+    if (!comment.trim()) return;
     try {
-      const res = await apiClient.post(`/api/videos/${id}/comments`, {
-        text: commentText,
-      });
-      setComments([res.data, ...comments]);
-      setCommentText("");
-    } catch (err) {
-      const status = err?.response?.status;
-      if (status === 401 || status === 403) {
-        toast.error("Login required!");
-      } else {
-        toast.error("Failed to submit");
-      }
+      await apiClient.post(`/api/videos/${id}/comments`, { text: comment });
+      setComment("");
+      loadVideo();
+    } catch {
+      toast.error("Couldn't post comment");
     }
   };
 
-  const submitRating = async () => {
-    try {
-      const res = await apiClient.post(`/api/videos/${id}/rate`, {
-        score: rating,
-      });
-      setVideo({
-        ...video,
-        ratingAvg: res.data.ratingAvg,
-        ratingCount: res.data.ratingCount,
-      });
-      toast.success("Thanks for rating!");
-    } catch (err) {
-      const status = err?.response?.status;
-      if (status === 401 || status === 403) {
-        toast.error("Login required!");
-      } else {
-        toast.error("Failed to submit");
-      }
-    }
-  };
-
-  if (!video) return <Container className="mt-3">Loading...</Container>;
+  if (!video) return <div className="mx-auto max-w-5xl px-4 py-6">Loading...</div>;
 
   return (
-    <Container className="mt-3">
-      <h2>{video.title}</h2>
-      <p className="text-muted">
-        {video.genre} {video.ageRating ? `| ${video.ageRating}` : ""}
-      </p>
-      <Row>
-        <Col md={8}>
-          {/* <video controls width="100%" src={video.videoUrl} /> */}
-          <video controls width="100%" src={video?.streamUrl || video?.videoUrl} />
-          <p className="mt-2">{video.description}</p>
-          <p>
-            <strong>Rating:</strong> {video.ratingAvg?.toFixed(2) || "N/A"} (
-            {video.ratingCount || 0} ratings)
-          </p>
-          <div className="d-flex align-items-center mb-3">
-            <Form.Select
-              value={rating}
-              onChange={(e) => setRating(Number(e.target.value))}
-              style={{ width: "100px" }}
-              className="me-2"
-            >
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Form.Select>
-            <Button onClick={submitRating}>Rate</Button>
-          </div>
-          <h4>Comments</h4>
-          <Form onSubmit={submitComment} className="mb-3">
-            <Form.Control
-              as="textarea"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment..."
-              rows={3}
-              className="mb-2"
-            />
-            <Button type="submit">Post Comment</Button>
-          </Form>
-          <ListGroup>
-            {comments.map((c) => (
-              <ListGroup.Item key={c.id}>
-                <strong>{c.username}</strong> (
-                {new Date(c.timestamp).toLocaleString()}):
-                <br />
-                {c.text}
-                {typeof c.sentimentScore === "number" && (
-                  <small className="text-muted ms-2">
-                    Sentiment: {c.sentimentScore.toFixed(2)}
-                  </small>
-                )}
-              </ListGroup.Item>
-            ))}
-          </ListGroup>
-        </Col>
-        <Col md={4}>
-          {/* Additional info or related videos could go here */}
-        </Col>
-      </Row>
-    </Container>
+    <div className="mx-auto max-w-6xl px-4 py-6 grid gap-6 lg:grid-cols-3">
+      <div className="lg:col-span-2">
+        <div className="card overflow-hidden">
+          <video controls className="aspect-video w-full bg-black" src={video.playbackUrl || video.url} />
+        </div>
+        <h1 className="mt-4 text-xl font-semibold">{video.title}</h1>
+        <p className="mt-1 text-slate-300">{video.description}</p>
+        <div className="mt-2 flex items-center gap-2">
+          {video.genre && <span className="badge">{video.genre}</span>}
+          {video.ageRating && <span className="badge">{video.ageRating}</span>}
+        </div>
+      </div>
+      <aside className="card p-4">
+        <h2 className="text-lg font-semibold">Comments</h2>
+        <form onSubmit={submitComment} className="mt-3">
+          <textarea className="input" rows={3} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Add a comment..." />
+          <button className="btn-primary mt-2">Post</button>
+        </form>
+        <div className="mt-4 space-y-3">
+          {comments.length === 0 ? (
+            <p className="text-sm text-slate-400">No comments yet</p>
+          ) : comments.map((c, idx) => (
+            <div key={idx} className="rounded-xl bg-slate-900/60 p-3 ring-1 ring-white/10">
+              <div className="text-sm font-medium">{c.author || "User"}</div>
+              <div className="text-sm text-slate-300">{c.text}</div>
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
   );
 };
 
