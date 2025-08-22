@@ -1,56 +1,120 @@
-import React, { useState } from "react";
-import { apiClient } from "../api";
-import { toast } from "react-toastify";
-import { GENRE_OPTIONS } from "../constants";
+// at the top of the file:
+import { useState } from "react";
+// adjust this import to match your axios instance path:
+import api from "../lib/apiClient"; // e.g., ../utils/apiClient or ../services/api
 
-const UploadPage = () => {
+export default function UploadPage() {
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [publisher, setPublisher] = useState("");
+  const [producer, setProducer] = useState("");
   const [genre, setGenre] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [ageRating, setAgeRating] = useState("PG");
+  const [status, setStatus] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) return toast.error("Choose a video file");
+    if (!file) {
+      setStatus("Please choose a video file.");
+      return;
+    }
+    setIsLoading(true);
+    setStatus("");
+
     try {
-      setLoading(true);
-      const form = new FormData();
-      form.append("video", file);
-      form.append("title", title);
-      form.append("description", description);
-      form.append("genre", genre);
-      await api.post('/videos/upload', formData, {
+      const formData = new FormData();
+      formData.append("video", file);
+      formData.append("title", title);
+      formData.append("publisher", publisher);
+      formData.append("producer", producer);
+      formData.append("genre", genre);
+      formData.append("ageRating", ageRating);
+
+      const { data } = await api.post("/videos/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      toast.success("Uploaded!");
-      setFile(null); setTitle(""); setDescription(""); setGenre("");
+
+      setStatus(`Uploaded: ${data?.title ?? "Success"}`);
+      setFile(null);
+      setTitle("");
+      setPublisher("");
+      setProducer("");
+      setGenre("");
+      setAgeRating("PG");
     } catch (err) {
-      toast.error(err.response?.data?.message || "Upload failed");
+      console.error(err);
+      setStatus(err?.response?.data?.message || "Upload failed.");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
-      <form onSubmit={submit} className="card p-6">
-        <h1 className="text-xl font-semibold">Upload a video</h1>
-        <label className="mt-5 block text-sm">Title</label>
-        <input className="input" value={title} onChange={e=>setTitle(e.target.value)} required />
-        <label className="mt-4 block text-sm">Description</label>
-        <textarea className="input" rows={4} value={description} onChange={e=>setDescription(e.target.value)} />
-        <label className="mt-4 block text-sm">Genre</label>
-        <select className="input" value={genre} onChange={e=>setGenre(e.target.value)}>
-          <option value="">Select genre</option>
-          {GENRE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
-        <label className="mt-4 block text-sm">Video file</label>
-        <input className="input file:mr-4 file:rounded-xl file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-white hover:file:bg-brand-500" type="file" accept="video/*" onChange={e=>setFile(e.target.files?.[0])} />
-        <button className="btn-primary mt-6" disabled={loading}>{loading? "Uploading..." : "Upload"}</button>
+    <div className="mx-auto max-w-3xl px-4 py-10">
+      <h1 className="text-2xl font-semibold">Upload a video</h1>
+
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          className="block w-full rounded-lg border border-gray-300 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-white"
+        />
+
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2"
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <input
+            value={publisher}
+            onChange={(e) => setPublisher(e.target.value)}
+            placeholder="Publisher"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
+          />
+          <input
+            value={producer}
+            onChange={(e) => setProducer(e.target.value)}
+            placeholder="Producer"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <input
+            value={genre}
+            onChange={(e) => setGenre(e.target.value)}
+            placeholder="Genre"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
+          />
+          <select
+            value={ageRating}
+            onChange={(e) => setAgeRating(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
+          >
+            <option>PG</option>
+            <option>12</option>
+            <option>15</option>
+            <option>18</option>
+          </select>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="inline-flex items-center rounded-xl bg-gray-900 px-4 py-2 font-medium text-white disabled:opacity-60"
+        >
+          {isLoading ? "Uploading…" : "Upload"}
+        </button>
+
+        {status && (
+          <p className="text-sm text-gray-700">
+            {status}
+          </p>
+        )}
       </form>
     </div>
   );
-};
-
-export default UploadPage;
+}
