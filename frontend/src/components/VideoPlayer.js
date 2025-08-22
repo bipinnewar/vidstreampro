@@ -72,6 +72,13 @@ const VideoPlayer = () => {
     }
   };
 
+  const getSentimentLabel = (score) => {
+    if (score > 0.25) return "Positive";
+    if (score < -0.25) return "Negative";
+    return "Neutral";
+  };
+
+
   if (!video) return <Container className="mt-3">Loading...</Container>;
 
   return (
@@ -133,7 +140,8 @@ const VideoPlayer = () => {
                     {c.text}
                     {typeof c.sentimentScore === 'number' && (
                       <small className="text-muted ms-2">
-                        Sentiment: {c.sentimentScore.toFixed(2)}
+                        {/* Sentiment: {c.sentimentScore.toFixed(2)} */}
+                        Sentiment: {getSentimentLabel(c.sentimentScore)} ({c.sentimentScore.toFixed(2)})
                       </small>
                     )}
                   </ListGroup.Item>
