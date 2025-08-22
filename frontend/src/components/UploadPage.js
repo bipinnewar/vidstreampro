@@ -1,120 +1,162 @@
-// at the top of the file:
-import { useState } from "react";
-// adjust this import to match your axios instance path:
-import api from "../lib/apiClient"; // e.g., ../utils/apiClient or ../services/api
+import React, { useState } from "react";
+import { apiClient } from "../api";
+import { Container, Form, Button, Card } from "react-bootstrap";
+import { toast } from "react-toastify";
+import { GENRE_OPTIONS, AGE_RATING_OPTIONS } from "../constants";
 
-export default function UploadPage() {
+/*
+ * UploadPage allows creators to upload new videos. It collects
+ * metadata, requests a SAS URL from the backend, uploads the file
+ * directly to Azure Blob Storage, and then finalizes the upload.
+ */
+const UploadPage = () => {
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    publisher: "",
+    producer: "",
+    genre: "",
+    ageRating: "",
+  });
   const [file, setFile] = useState(null);
-  const [title, setTitle] = useState("");
-  const [publisher, setPublisher] = useState("");
-  const [producer, setProducer] = useState("");
-  const [genre, setGenre] = useState("");
-  const [ageRating, setAgeRating] = useState("PG");
-  const [status, setStatus] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) {
-      setStatus("Please choose a video file.");
-      return;
-    }
-    setIsLoading(true);
-    setStatus("");
-
+    if (!file) return toast.error("Please choose a video file");
     try {
-      const formData = new FormData();
-      formData.append("video", file);
-      formData.append("title", title);
-      formData.append("publisher", publisher);
-      formData.append("producer", producer);
-      formData.append("genre", genre);
-      formData.append("ageRating", ageRating);
-
-      const { data } = await api.post("/videos/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      setUploading(true);
+      // Request SAS URL and ID
+      const meta = { ...form, contentType: file.type || "video/mp4" };
+      const initRes = await apiClient.post("/api/videos", meta);
+      const { id, uploadUrl } = initRes.data;
+      // Upload file directly to blob storage
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "x-ms-blob-type": "BlockBlob" },
+        body: file,
       });
-
-      setStatus(`Uploaded: ${data?.title ?? "Success"}`);
+      if (!uploadRes.ok) throw new Error("Blob upload failed");
+      // Finalize metadata
+      await apiClient.post(`/api/videos/${id}/finalize`);
+      setUploading(false);
+      toast.success("Video uploaded successfully");
+      // Reset form
+      setForm({
+        title: "",
+        description: "",
+        publisher: "",
+        producer: "",
+        genre: "",
+        ageRating: "",
+      });
       setFile(null);
-      setTitle("");
-      setPublisher("");
-      setProducer("");
-      setGenre("");
-      setAgeRating("PG");
+      document.getElementById("fileInput").value = "";
     } catch (err) {
-      console.error(err);
-      setStatus(err?.response?.data?.message || "Upload failed.");
-    } finally {
-      setIsLoading(false);
+      setUploading(false);
+      toast.error(err.response?.data?.error || err.message || "Upload failed");
     }
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-semibold">Upload a video</h1>
-
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <input
-          type="file"
-          accept="video/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="block w-full rounded-lg border border-gray-300 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-white"
-        />
-
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2"
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <input
-            value={publisher}
-            onChange={(e) => setPublisher(e.target.value)}
-            placeholder="Publisher"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-          <input
-            value={producer}
-            onChange={(e) => setProducer(e.target.value)}
-            placeholder="Producer"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <input
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-            placeholder="Genre"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-          <select
-            value={ageRating}
-            onChange={(e) => setAgeRating(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          >
-            <option>PG</option>
-            <option>12</option>
-            <option>15</option>
-            <option>18</option>
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="inline-flex items-center rounded-xl bg-gray-900 px-4 py-2 font-medium text-white disabled:opacity-60"
-        >
-          {isLoading ? "Uploading…" : "Upload"}
-        </button>
-
-        {status && (
-          <p className="text-sm text-gray-700">
-            {status}
-          </p>
-        )}
-      </form>
-    </div>
+    <Container className="mt-3">
+      <h2>Upload a Video</h2>
+      <Card className="mt-3">
+        <Card.Body>
+          <Form onSubmit={handleSubmit}>
+            <Form.Group className="mb-3">
+              <Form.Label>Title</Form.Label>
+              <Form.Control
+                type="text"
+                name="title"
+                value={form.title}
+                onChange={handleChange}
+                required
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Description</Form.Label>
+              <Form.Control
+                as="textarea"
+                name="description"
+                value={form.description}
+                onChange={handleChange}
+                rows={3}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Publisher</Form.Label>
+              <Form.Control
+                type="text"
+                name="publisher"
+                value={form.publisher}
+                onChange={handleChange}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Producer</Form.Label>
+              <Form.Control
+                type="text"
+                name="producer"
+                value={form.producer}
+                onChange={handleChange}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Genre</Form.Label>
+              <Form.Select
+                className="mb-2"
+                value={form.genre}
+                onChange={(e) => setForm({ ...form, genre: e.target.value })}
+              >
+                <option value="">Select genre…</option>
+                {GENRE_OPTIONS.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Age Rating</Form.Label>
+              <Form.Select
+                className="mb-2"
+                value={form.ageRating}
+                onChange={(e) => setForm({ ...form, ageRating: e.target.value })}
+              >
+                <option value="">Select age rating…</option>
+                {AGE_RATING_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Video File (MP4)</Form.Label>
+              <Form.Control
+                type="file"
+                id="fileInput"
+                accept="video/mp4"
+                onChange={handleFileChange}
+              />
+            </Form.Group>
+            <Button type="submit" disabled={uploading}>
+              {uploading ? 'Uploading...' : 'Upload'}
+            </Button>
+          </Form>
+        </Card.Body>
+      </Card>
+    </Container>
   );
-}
+};
+
+export default UploadPage;

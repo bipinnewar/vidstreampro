@@ -1,0 +1,152 @@
+/* Custom styles to modernize the VidStreamPro UI. These styles
+   override some of the default Bootstrap look and feel to provide a
+   more contemporary aesthetic while keeping the existing
+   functionality intact. */
+
+/* Apply a light background and subtle font color across the app */
+body {
+  background-color: #f5f7fa;
+  color: #333;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Give the navigation bar a vibrant gradient and smooth corners */
+.navbar {
+  background: linear-gradient(90deg, #6f42c1 0%, #e83e8c 100%) !important;
+  border-bottom: none;
+  padding: 0.8rem 1rem;
+}
+
+/* Style the brand to be more prominent */
+.navbar-brand {
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: #fff !important;
+}
+
+/* Tweak the nav links for better readability */
+.navbar-nav .nav-link {
+  color: #f8f9fa !important;
+  font-weight: 500;
+  margin-right: 0.5rem;
+}
+
+.navbar-nav .nav-link:hover {
+  color: #ffd7f0 !important;
+}
+
+/* Buttons: adjust colors, rounded corners and remove harsh borders */
+.btn-primary {
+  background-color: #e83e8c;
+  border-color: #e83e8c;
+  border-radius: 0.4rem;
+  font-weight: 500;
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: #d63384;
+  border-color: #d63384;
+}
+
+.btn-outline-light {
+  color: #fff;
+  border-color: #fff;
+  border-radius: 0.4rem;
+}
+
+.btn-outline-light:hover,
+.btn-outline-light:focus {
+  background-color: #fff;
+  color: #6f42c1;
+}
+
+.btn-danger {
+  border-radius: 0.4rem;
+}
+
+/* Modern card styling with soft shadows and rounded corners */
+.card {
+  border: none;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+
+.card-subtitle {
+  font-size: 0.875rem;
+}
+
+/* Form controls: add rounded edges and subtle borders */
+.form-control,
+.form-select {
+  border-radius: 0.5rem;
+  border: 1px solid #ced4da;
+  padding: 0.6rem 0.75rem;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #d63384;
+  box-shadow: none;
+}
+
+/* Tables: soften borders and add hover effect */
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.table thead tr {
+  background-color: #f1eaf5;
+}
+
+.table tbody tr:hover {
+  background-color: #f9f2fc;
+}
+
+/* Hero section for the home page */
+.hero-section {
+  background: linear-gradient(120deg, #6f42c1 0%, #d63384 100%);
+  color: #fff;
+  border-radius: 1rem;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.hero-section h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.hero-section p {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+/* Adjust toast notifications to match theme */
+.Toastify__toast {
+  border-radius: 0.5rem;
+  font-weight: 500;
+}
+
+/* Apply rounded corners and subtle shadow to any video element */
+video {
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
