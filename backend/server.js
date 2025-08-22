@@ -15,6 +15,7 @@ const {
   TextAnalyticsClient,
   AzureKeyCredential,
 } = require('@azure/ai-text-analytics');
+const Redis = require('ioredis'); // <-- NEW
 require('dotenv').config();
 
 /* ---------- Read SAS helper for playback ---------- */
@@ -42,7 +43,7 @@ function getReadSasUrl(blobName, minutes = 120) {
 }
 
 /*
- * REST API for scalable video sharing app (Cosmos DB + Blob Storage + Text Analytics).
+ * REST API for scalable video sharing app (Cosmos DB + Blob Storage + Text Analytics + Redis cache).
  */
 
 const app = express();
@@ -66,6 +67,14 @@ const {
   STORAGE_CONTAINER_NAME,
   AZURE_TEXT_ANALYTICS_ENDPOINT,
   AZURE_TEXT_ANALYTICS_KEY,
+
+  // Redis-related (NEW)
+  REDIS_HOST,
+  REDIS_PORT = 6380,
+  REDIS_PASSWORD,
+  REDIS_TLS = 'true',
+  CACHE_TTL_LIST = '120',
+  CACHE_TTL_VIDEO = '300',
 } = process.env;
 
 if (!JWT_SECRET) {
@@ -97,6 +106,57 @@ const textAnalyticsClient = new TextAnalyticsClient(
   new AzureKeyCredential(AZURE_TEXT_ANALYTICS_KEY)
 );
 
+/* ---------- Redis client + helpers (NEW) ---------- */
+let redis;
+if (REDIS_HOST && REDIS_PASSWORD) {
+  redis = new Redis({
+    host: REDIS_HOST,
+    port: Number(REDIS_PORT),
+    password: REDIS_PASSWORD,
+    tls: REDIS_TLS === 'true' ? {} : undefined, // Azure Redis requires TLS on 6380
+    lazyConnect: true, // connect on first command
+  });
+  redis.on('error', (e) => console.error('[Redis] error', e.message));
+  console.log('[Redis] configured');
+} else {
+  console.warn('[Redis] not configured; running without cache');
+}
+
+const cacheGet = async (key) => {
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    console.warn('[Redis] GET fail', e.message);
+    return null;
+  }
+};
+
+const cacheSet = async (key, value, ttlSeconds) => {
+  if (!redis) return;
+  try {
+    await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+  } catch (e) {
+    console.warn('[Redis] SET fail', e.message);
+  }
+};
+
+const cacheDelPrefix = async (prefix) => {
+  if (!redis) return;
+  try {
+    let cursor = '0';
+    do {
+      const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 200);
+      cursor = next;
+      if (keys.length) await redis.del(keys);
+    } while (cursor !== '0');
+  } catch (e) {
+    console.warn('[Redis] DEL prefix fail', e.message);
+  }
+};
+
+/* ---------- Auth middlewares ---------- */
 // Middleware: authenticate JWT and attach user to request
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -122,6 +182,7 @@ const requireCreator = (req, res, next) => {
   next();
 };
 
+/* ---------- SAS for upload ---------- */
 // Helper: generate SAS URL for uploading a blob
 const generateUploadSas = (blobName, contentType) => {
   const expiresOn = new Date(new Date().valueOf() + 60 * 60 * 1000); // 1 hour
@@ -140,7 +201,7 @@ const generateUploadSas = (blobName, contentType) => {
   )}?${sasToken}`;
 };
 
-// Helper: run sentiment analysis on comment text
+/* ---------- Sentiment helper ---------- */
 async function analyzeSentiment(text) {
   try {
     const [result] = await textAnalyticsClient.analyzeSentiment([text]);
@@ -152,6 +213,7 @@ async function analyzeSentiment(text) {
   }
 }
 
+/* ---------- AUTH ---------- */
 // User signup
 app.post('/api/auth/signup', async (req, res) => {
   const { username, email, password, role } = req.body;
@@ -218,9 +280,18 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
 
 /* ---------- VIDEOS ---------- */
 
-// Get all videos with optional search and genre filter (include streamUrl)
+// Get all videos with optional search and genre filter (include streamUrl) + CACHE
 app.get('/api/videos', async (req, res) => {
   const { search, genre } = req.query;
+  const ttl = parseInt(CACHE_TTL_LIST, 10);
+  const ck = `videos:list:search=${search || ''}:genre=${genre || ''}`;
+
+  const cached = await cacheGet(ck);
+  if (cached) {
+    res.set('X-Cache', 'HIT');
+    return res.json(cached);
+  }
+
   let query = 'SELECT * FROM c';
   const parameters = [];
   const where = [];
@@ -239,23 +310,31 @@ app.get('/api/videos', async (req, res) => {
     .query({ query, parameters })
     .fetchAll();
 
-  // Normalize each item and attach a temporary read SAS for playback
   const items = (videos || []).map((v) => {
-    // v.videoUrl is stored as either blobName (e.g. "<id>.mp4") or a full URL
     const blob =
       v.blobName ||
       (v.videoUrl ? v.videoUrl.split('/').pop().split('?')[0] : null);
-
     const streamUrl = blob ? getReadSasUrl(blob, 120) : null;
     return { ...v, streamUrl };
   });
 
+  await cacheSet(ck, items, ttl);
+  res.set('X-Cache', 'MISS');
   res.json(items);
 });
 
-// Get a single video with comments (include streamUrl)
+// Get a single video with comments (include streamUrl) + CACHE
 app.get('/api/videos/:id', async (req, res) => {
   const { id } = req.params;
+  const ttl = parseInt(CACHE_TTL_VIDEO, 10);
+  const ck = `videos:byid:${id}`;
+
+  const cached = await cacheGet(ck);
+  if (cached) {
+    res.set('X-Cache', 'HIT');
+    return res.json(cached);
+  }
+
   try {
     const { resource: video } = await videosContainer.item(id, id).read();
     if (!video) return res.status(404).json({ error: 'Video not found' });
@@ -272,8 +351,11 @@ app.get('/api/videos/:id', async (req, res) => {
       (video.videoUrl ? video.videoUrl.split('/').pop().split('?')[0] : null);
 
     const streamUrl = blob ? getReadSasUrl(blob, 120) : null;
+    const payload = { video: { ...video, streamUrl }, comments };
 
-    res.json({ video: { ...video, streamUrl }, comments });
+    await cacheSet(ck, payload, ttl);
+    res.set('X-Cache', 'MISS');
+    res.json(payload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error loading video' });
@@ -306,6 +388,10 @@ app.post('/api/videos', authenticate, requireCreator, async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   await videosContainer.items.create(videoDoc);
+
+  // Invalidate cached lists
+  await cacheDelPrefix('videos:list:');
+
   res.status(201).json({ id, uploadUrl: sasUrl });
 });
 
@@ -319,6 +405,11 @@ app.post('/api/videos/:id/finalize', authenticate, requireCreator, async (req, r
   // mark ready; keep `videoUrl` as blobName (safer), playback uses SAS anyway
   video.status = 'ready';
   await videosContainer.items.upsert(video);
+
+  // Invalidate
+  await cacheDelPrefix('videos:list:');
+  await cacheDelPrefix(`videos:byid:${id}`);
+
   res.json({ ok: true });
 });
 
@@ -329,8 +420,13 @@ app.put('/api/videos/:id', authenticate, requireCreator, async (req, res) => {
   const { resource: video } = await videosContainer.item(id, id).read();
   if (!video) return res.status(404).json({ error: 'Video not found' });
   if (video.uploadedBy !== req.user.userId) return res.status(403).json({ error: 'Not your video' });
+
   Object.assign(video, updates);
   await videosContainer.items.upsert(video);
+
+  await cacheDelPrefix('videos:list:');
+  await cacheDelPrefix(`videos:byid:${id}`);
+
   res.json(video);
 });
 
@@ -340,7 +436,12 @@ app.delete('/api/videos/:id', authenticate, requireCreator, async (req, res) => 
   const { resource: video } = await videosContainer.item(id, id).read();
   if (!video) return res.status(404).json({ error: 'Video not found' });
   if (video.uploadedBy !== req.user.userId) return res.status(403).json({ error: 'Not your video' });
+
   await videosContainer.item(id, id).delete();
+
+  await cacheDelPrefix('videos:list:');
+  await cacheDelPrefix(`videos:byid:${id}`);
+
   // Not deleting blob in this sample
   res.json({ ok: true });
 });
@@ -362,6 +463,10 @@ app.post('/api/videos/:id/comments', authenticate, async (req, res) => {
     timestamp: new Date().toISOString(),
   };
   await commentsContainer.items.create(comment);
+
+  // Invalidate only the detailed page cache
+  await cacheDelPrefix(`videos:byid:${id}`);
+
   res.status(201).json(comment);
 });
 
@@ -392,6 +497,11 @@ app.post('/api/videos/:id/rate', authenticate, async (req, res) => {
   }
   video.ratingAvg = Number((video.ratingTotal / video.ratingCount).toFixed(2));
   await videosContainer.items.upsert(video);
+
+  // Invalidate list (avg displayed) and detail
+  await cacheDelPrefix('videos:list:');
+  await cacheDelPrefix(`videos:byid:${id}`);
+
   res.json({ ratingAvg: video.ratingAvg, ratingCount: video.ratingCount });
 });
 
