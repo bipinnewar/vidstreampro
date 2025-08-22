@@ -20,7 +20,7 @@ const UploadPage = () => {
       form.append("title", title);
       form.append("description", description);
       form.append("genre", genre);
-      const res = await apiClient.post("/api/videos", form, {
+      await api.post('/videos/upload', formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       toast.success("Uploaded!");
