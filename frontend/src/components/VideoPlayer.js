@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../api";
-import { Container, Form, Button, ListGroup, Row, Col, Card } from "react-bootstrap";
+import {
+  Container,
+  Form,
+  Button,
+  ListGroup,
+  Row,
+  Col,
+  Card,
+} from "react-bootstrap";
 import { toast } from "react-toastify";
 
 /*
@@ -72,12 +80,13 @@ const VideoPlayer = () => {
     }
   };
 
-  const getSentimentLabel = (score) => {
-    if (score > 0.25) return "Positive";
-    if (score < -0.25) return "Negative";
-    return "Neutral";
+  const getSentimentLabelAndColor = (score) => {
+    if (score > 0.25)
+      return { label: "Positive", color: "success", emoji: "😊" };
+    if (score < -0.25)
+      return { label: "Negative", color: "danger", emoji: "😠" };
+    return { label: "Neutral", color: "secondary", emoji: "😐" };
   };
-
 
   if (!video) return <Container className="mt-3">Loading...</Container>;
 
@@ -85,7 +94,7 @@ const VideoPlayer = () => {
     <Container className="mt-3">
       <h2>{video.title}</h2>
       <p className="text-muted">
-        {video.genre} {video.ageRating ? `| ${video.ageRating}` : ''}
+        {video.genre} {video.ageRating ? `| ${video.ageRating}` : ""}
       </p>
       {/* Center the video player and comments */}
       <Row className="justify-content-center">
@@ -97,18 +106,18 @@ const VideoPlayer = () => {
                 controls
                 width="100%"
                 src={video?.streamUrl || video?.videoUrl}
-                style={{ display: 'block', width: '100%' }}
+                style={{ display: "block", width: "100%" }}
               />
               <p className="mt-3">{video.description}</p>
               <p>
-                <strong>Rating:</strong> {video.ratingAvg?.toFixed(2) || 'N/A'} (
-                {video.ratingCount || 0} ratings)
+                <strong>Rating:</strong> {video.ratingAvg?.toFixed(2) || "N/A"}{" "}
+                ({video.ratingCount || 0} ratings)
               </p>
               <div className="d-flex align-items-center mb-4">
                 <Form.Select
                   value={rating}
                   onChange={(e) => setRating(Number(e.target.value))}
-                  style={{ width: '100px' }}
+                  style={{ width: "100px" }}
                   className="me-2"
                 >
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -138,12 +147,16 @@ const VideoPlayer = () => {
                     {new Date(c.timestamp).toLocaleString()}):
                     <br />
                     {c.text}
-                    {typeof c.sentimentScore === 'number' && (
-                      <small className="text-muted ms-2">
-                        {/* Sentiment: {c.sentimentScore.toFixed(2)} */}
-                        Sentiment: {getSentimentLabel(c.sentimentScore)} ({c.sentimentScore.toFixed(2)})
-                      </small>
-                    )}
+                    {typeof c.sentimentScore === "number" &&
+                      (() => {
+                        const { label, color, emoji } =
+                          getSentimentLabelAndColor(c.sentimentScore);
+                        return (
+                          <span className={`badge bg-${color} ms-2`}>
+                            {emoji} {label} ({c.sentimentScore.toFixed(2)})
+                          </span>
+                        );
+                      })()}
                   </ListGroup.Item>
                 ))}
               </ListGroup>
